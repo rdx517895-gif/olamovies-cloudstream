@@ -17,6 +17,8 @@ jobs:
           distribution: 'temurin'
 
       - name: Build Plugin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git clone https://github.com/recloudstream/cloudstream-extensions-phisher template
           cp -r OlaMovies template/
