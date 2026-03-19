@@ -2,21 +2,17 @@ package com.rdx.olamovies
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.network.CloudflareKiller
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
 class OlaMoviesProvider : MainAPI() {
 
-    override var mainUrl              = "https://n1.olamovies.info"
-    override var name                 = "OlaMovies"
-    override val supportedTypes       = setOf(TvType.Movie, TvType.TvSeries)
-    override var lang                 = "hi"
-    override val hasMainPage          = true
-    override val hasSearch            = true
+    override var mainUrl        = "https://n1.olamovies.info"
+    override var name           = "OlaMovies"
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override var lang           = "hi"
+    override val hasMainPage    = true
     override val hasChromecastSupport = true
-
-    private val cfKiller = CloudflareKiller()
 
     override val mainPage = mainPageOf(
         "$mainUrl/category/2160p/page/"  to "2160p 4K",
@@ -28,18 +24,18 @@ class OlaMoviesProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "${request.data}$page"
-        val doc = app.get(url, interceptor = cfKiller).document
+        val doc = app.get(url).document
         val items = doc.parsePostList()
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val doc = app.get("$mainUrl/?s=${query.encodeUri()}", interceptor = cfKiller).document
+        val doc = app.get("$mainUrl/?s=${query.encodeUri()}").document
         return doc.parsePostList()
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val doc    = app.get(url, interceptor = cfKiller).document
+        val doc    = app.get(url).document
         val title  = doc.selectFirst("h1.entry-title, h1.post-title, h1")?.text()?.trim() ?: return null
         val poster = doc.selectFirst("div.entry-content img, .post-thumbnail img, img.wp-post-image")?.attr("abs:src")
         val plot   = doc.selectFirst("div.entry-content p")?.text()?.trim()
@@ -72,7 +68,7 @@ class OlaMoviesProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = app.get(data, interceptor = cfKiller).document
+        val doc = app.get(data).document
         doc.extractAndCallbackLinks(callback)
         return true
     }
@@ -130,31 +126,36 @@ class OlaMoviesProvider : MainAPI() {
                 href.contains("drive.google.com") -> {
                     val fileId    = href.extractGDriveId() ?: continue
                     val directUrl = resolveGDriveLink(fileId) ?: continue
-                    callback(ExtractorLink(
-                        source  = name,
-                        name    = "$name ${qualityLabel(quality, label)}",
-                        url     = directUrl,
-                        referer = mainUrl,
-                        quality = quality,
-                        isM3u8  = false,
-                        headers = mapOf("User-Agent" to USER_AGENT, "Referer" to mainUrl)
-                    ))
+                    callback(
+                        newExtractorLink(
+                            source  = name,
+                            name    = "$name ${qualityLabel(quality, label)}",
+                            url     = directUrl,
+                            type    = ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = mainUrl
+                            this.quality = quality
+                            this.headers = mapOf("User-Agent" to USER_AGENT, "Referer" to mainUrl)
+                        }
+                    )
                 }
                 href.contains("ol-am.top") || href.contains("olamovies") -> {
                     try {
-                        val location = app.get(href, interceptor = cfKiller, allowRedirects = false)
-                            .headers["location"] ?: continue
+                        val location = app.get(href, allowRedirects = false).headers["location"] ?: continue
                         if (location.contains("drive.google.com")) {
                             val fileId    = location.extractGDriveId() ?: continue
                             val directUrl = resolveGDriveLink(fileId) ?: continue
-                            callback(ExtractorLink(
-                                source  = name,
-                                name    = "$name ${qualityLabel(quality, label)}",
-                                url     = directUrl,
-                                referer = mainUrl,
-                                quality = quality,
-                                isM3u8  = false
-                            ))
+                            callback(
+                                newExtractorLink(
+                                    source  = name,
+                                    name    = "$name ${qualityLabel(quality, label)}",
+                                    url     = directUrl,
+                                    type    = ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = mainUrl
+                                    this.quality = quality
+                                }
+                            )
                         }
                     } catch (_: Exception) {}
                 }
@@ -214,12 +215,3 @@ class OlaMoviesProvider : MainAPI() {
             "Chrome/120.0.0.0 Mobile Safari/537.36"
     }
 }
-```
-Commit ✅
-
----
-
-## 📄 FILE 2
-**Name:**
-```
-OlaMovies/src/main/kotlin/com/rdx/olamovies/OlaMoviesPlugin.kt
