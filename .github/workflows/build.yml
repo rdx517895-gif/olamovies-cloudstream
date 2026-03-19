@@ -8,23 +8,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Build Plugin
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git clone https://github.com/recloudstream/cloudstream-extensions-phisher template
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf git://
+          git clone --depth 1 https://github.com/recloudstream/cloudstream-extensions-phisher.git template
           cp -r OlaMovies template/
           cd template
           chmod +x gradlew
-          ./gradlew OlaMovies:make
+          ./gradlew OlaMovies:make --no-daemon
 
       - name: Prepare builds
         run: |
