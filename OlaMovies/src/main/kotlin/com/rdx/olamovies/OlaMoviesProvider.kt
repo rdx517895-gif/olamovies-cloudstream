@@ -128,10 +128,10 @@ class OlaMoviesProvider : MainAPI() {
                     val directUrl = resolveGDriveLink(fileId) ?: continue
                     callback(
                         newExtractorLink(
-                            source  = name,
-                            name    = "$name ${qualityLabel(quality, label)}",
-                            url     = directUrl,
-                            type    = ExtractorLinkType.VIDEO
+                            source = name,
+                            name   = "$name ${qualityLabel(quality, label)}",
+                            url    = directUrl,
+                            type   = ExtractorLinkType.VIDEO
                         ) {
                             this.referer = mainUrl
                             this.quality = quality
@@ -147,10 +147,10 @@ class OlaMoviesProvider : MainAPI() {
                             val directUrl = resolveGDriveLink(fileId) ?: continue
                             callback(
                                 newExtractorLink(
-                                    source  = name,
-                                    name    = "$name ${qualityLabel(quality, label)}",
-                                    url     = directUrl,
-                                    type    = ExtractorLinkType.VIDEO
+                                    source = name,
+                                    name   = "$name ${qualityLabel(quality, label)}",
+                                    url    = directUrl,
+                                    type   = ExtractorLinkType.VIDEO
                                 ) {
                                     this.referer = mainUrl
                                     this.quality = quality
@@ -188,22 +188,22 @@ class OlaMoviesProvider : MainAPI() {
             (el.parents().firstOrNull { it.tagName() in listOf("div","p","li") }?.text() ?: "")
         ).lowercase()
         return when {
-            text.contains("2160") || text.contains("4k") -> Qualities.P2160
-            text.contains("1080") -> Qualities.P1080
-            text.contains("720")  -> Qualities.P720
-            text.contains("480")  -> Qualities.P480
-            text.contains("360")  -> Qualities.P360
-            else                  -> Qualities.Unknown
+            text.contains("2160") || text.contains("4k") -> 2160
+            text.contains("1080") -> 1080
+            text.contains("720")  -> 720
+            text.contains("480")  -> 480
+            text.contains("360")  -> 360
+            else                  -> -1
         }
     }
 
     private fun qualityLabel(quality: Int, fallback: String): String = when (quality) {
-        Qualities.P2160 -> "2160p 4K"
-        Qualities.P1080 -> "1080p"
-        Qualities.P720  -> "720p"
-        Qualities.P480  -> "480p"
-        Qualities.P360  -> "360p"
-        else            -> fallback.take(40).ifBlank { "Unknown" }
+        2160 -> "2160p 4K"
+        1080 -> "1080p"
+        720  -> "720p"
+        480  -> "480p"
+        360  -> "360p"
+        else -> fallback.take(40).ifBlank { "Unknown" }
     }
 
     private fun String.encodeUri() = java.net.URLEncoder.encode(this, "UTF-8")
