@@ -8,13 +8,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout my repo
         uses: actions/checkout@v4
 
       - name: Checkout CloudStream template
         uses: actions/checkout@v4
         with:
-          repository: recloudstream/cloudstream-extensions-phisher
+          repository: recloudstream/cloudstream-extensions
           path: template
 
       - name: Set up JDK 17
