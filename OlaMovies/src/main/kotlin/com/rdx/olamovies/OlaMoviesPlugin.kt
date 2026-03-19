@@ -1,11 +1,11 @@
 package com.rdx.olamovies
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
-import com.lagradost.cloudstream3.plugins.Plugin
+import com.lagradost.cloudstream3.plugins.BasePlugin
 import android.content.Context
 
 @CloudstreamPlugin
-class OlaMoviesPlugin : Plugin() {
+class OlaMoviesPlugin : BasePlugin() {
     override fun load(context: Context) {
         registerMainAPI(OlaMoviesProvider())
     }
