@@ -1,0 +1,8 @@
+{
+  "name": "RDX OlaMovies Repo",
+  "description": "OlaMovies 4K UHD Google Drive Movies & Series",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/rdx517895-gif/olamovies-cloudstream/builds/plugins.json"
+  ]
+}
