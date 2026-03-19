@@ -14,7 +14,7 @@ jobs:
       - name: Checkout CloudStream template
         uses: actions/checkout@v4
         with:
-          repository: recloudstream/cloudstream-extensions
+          repository: recloudstream/extensions
           path: template
 
       - name: Set up JDK 17
