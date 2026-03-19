@@ -1,0 +1,40 @@
+name: Build OlaMovies Plugin
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build Plugin
+        run: |
+          git clone https://github.com/recloudstream/cloudstream-extensions-phisher template
+          cp -r OlaMovies template/
+          cd template
+          chmod +x gradlew
+          ./gradlew OlaMovies:make
+
+      - name: Prepare builds
+        run: |
+          mkdir -p builds
+          find template -name "*.cs3" -exec cp {} builds/ \;
+          cp repo.json builds/
+          printf '[{"url":"https://raw.githubusercontent.com/rdx517895-gif/olamovies-cloudstream/builds/OlaMovies.cs3","name":"OlaMovies","version":1,"authors":["rdx517895-gif"],"tvTypes":["Movie","TvSeries"],"description":"OlaMovies 4K UHD Movies and Series"}]' > builds/plugins.json
+
+      - name: Deploy to builds branch
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./builds
+          publish_branch: builds
+          force_orphan: true
