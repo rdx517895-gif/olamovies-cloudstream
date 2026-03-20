@@ -145,55 +145,166 @@ class OlaMoviesProvider : MainAPI() {
     }
 
     private suspend fun Document.extractAndCallbackLinks(callback: (ExtractorLink) -> Unit) {
-        val allLinks = select(
-            "a[href*=drive.google.com], a[href*=gdrive], " +
-            "a[href*=ol-am.top], a[href*=olamovies], " +
-            "div.entry-content a[href]"
-        )
+        val allLinks = select("div.entry-content a[href]")
+            .filter { el ->
+                val href = el.attr("abs:href")
+                href.isNotBlank() &&
+                !href.contains("olamovies.info/category") &&
+                !href.contains("olamovies.info/tag") &&
+                !href.contains("olamovies.info/#") &&
+                !href.contains("telegram") &&
+                !href.contains("javascript")
+            }
+
         for (el in allLinks) {
             val href    = el.attr("abs:href").trim()
             val label   = el.text().trim()
             val quality = resolveQuality(label, el)
-            when {
-                href.contains("drive.google.com") -> {
-                    val fileId    = href.extractGDriveId() ?: continue
-                    val directUrl = resolveGDriveLink(fileId) ?: continue
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name   = "$name ${qualityLabel(quality, label)}",
-                            url    = directUrl,
-                            type   = ExtractorLinkType.VIDEO
-                        ) {
-                            this.referer = mainUrl
-                            this.quality = quality
-                            this.headers = mapOf("User-Agent" to USER_AGENT, "Referer" to mainUrl)
-                        }
-                    )
+            try {
+                val finalUrl = resolveAllRedirects(href) ?: continue
+                when {
+                    finalUrl.contains("drive.google.com") -> {
+                        val fileId    = finalUrl.extractGDriveId() ?: continue
+                        val directUrl = resolveGDriveLink(fileId) ?: continue
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name   = "$name ${qualityLabel(quality, label)}",
+                                url    = directUrl,
+                                type   = ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = mainUrl
+                                this.quality = quality
+                                this.headers = mapOf(
+                                    "User-Agent" to USER_AGENT,
+                                    "Referer"    to mainUrl
+                                )
+                            }
+                        )
+                    }
+                    finalUrl.endsWith(".mkv") ||
+                    finalUrl.endsWith(".mp4") ||
+                    finalUrl.endsWith(".avi") -> {
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name   = "$name ${qualityLabel(quality, label)}",
+                                url    = finalUrl,
+                                type   = ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = mainUrl
+                                this.quality = quality
+                            }
+                        )
+                    }
                 }
-                href.contains("ol-am.top") || href.contains("olamovies") -> {
-                    try {
-                        val location = app.get(href, allowRedirects = false)
-                            .headers["location"] ?: continue
-                        if (location.contains("drive.google.com")) {
-                            val fileId    = location.extractGDriveId() ?: continue
-                            val directUrl = resolveGDriveLink(fileId) ?: continue
-                            callback(
-                                newExtractorLink(
-                                    source = name,
-                                    name   = "$name ${qualityLabel(quality, label)}",
-                                    url    = directUrl,
-                                    type   = ExtractorLinkType.VIDEO
-                                ) {
-                                    this.referer = mainUrl
-                                    this.quality = quality
-                                }
-                            )
+            } catch (_: Exception) {}
+        }
+    }
+
+    private suspend fun resolveAllRedirects(url: String, depth: Int = 0): String? {
+        if (depth > 15) return null
+        if (url.isBlank()) return null
+        if (url.contains("drive.google.com")) return url
+
+        return try {
+            when {
+                url.contains("links.ol-am.top") ||
+                url.contains("anylinks.site") ||
+                url.contains("anylinks.in") -> {
+                    bypassOlaMoviesLink(url)
+                }
+                url.contains("tpi.li") ||
+                url.contains("aryx.xyz") -> {
+                    bypassAryx(url)
+                }
+                else -> {
+                    val resp = app.get(
+                        url,
+                        timeout = 30,
+                        allowRedirects = false,
+                        headers = mapOf(
+                            "User-Agent" to USER_AGENT,
+                            "Referer"    to mainUrl
+                        )
+                    )
+                    val location = resp.headers["location"]
+                    when {
+                        location == null -> {
+                            resp.document
+                                .selectFirst("a[href*=drive.google.com]")
+                                ?.attr("abs:href") ?: url
                         }
-                    } catch (_: Exception) {}
+                        location.contains("drive.google.com") -> location
+                        else -> resolveAllRedirects(location, depth + 1)
+                    }
                 }
             }
-        }
+        } catch (_: Exception) { null }
+    }
+
+    private suspend fun bypassOlaMoviesLink(url: String): String? {
+        return try {
+            val slug = url.substringAfterLast("/")
+
+            // Step 1 — get token
+            app.get(
+                "https://aryx.xyz/token.php?link=$slug&id=1",
+                timeout = 30,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer"    to url
+                )
+            )
+
+            // Step 2 — get final link
+            val finalResp = app.get(
+                "https://aryx.xyz/templates/Get.php",
+                timeout = 30,
+                allowRedirects = false,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer"    to url,
+                    "Cookie"     to "anyl=$slug; template=1; page=3"
+                )
+            )
+
+            val location = finalResp.headers["location"]
+            if (!location.isNullOrBlank() && location.contains("drive.google.com")) {
+                location
+            } else {
+                // Fallback — allow redirects and find GDrive
+                val resp = app.get(
+                    url,
+                    timeout = 60,
+                    allowRedirects = true,
+                    headers = mapOf("User-Agent" to USER_AGENT)
+                )
+                resp.document.selectFirst("a[href*=drive.google.com]")?.attr("abs:href")
+            }
+        } catch (_: Exception) { null }
+    }
+
+    private suspend fun bypassAryx(url: String): String? {
+        return try {
+            val resp = app.get(
+                url,
+                timeout = 30,
+                allowRedirects = false,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer"    to mainUrl
+                )
+            )
+            val location = resp.headers["location"]
+            when {
+                location != null && location.contains("drive.google.com") -> location
+                location != null -> resolveAllRedirects(location, 0)
+                else -> resp.document
+                    .selectFirst("a[href*=drive.google.com]")
+                    ?.attr("abs:href")
+            }
+        } catch (_: Exception) { null }
     }
 
     private suspend fun resolveGDriveLink(fileId: String): String? {
