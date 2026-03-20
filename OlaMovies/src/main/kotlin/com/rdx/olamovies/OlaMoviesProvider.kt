@@ -10,16 +10,16 @@ class OlaMoviesProvider : MainAPI() {
     override var mainUrl        = "https://n1.olamovies.info"
     override var name           = "OlaMovies"
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-    override var lang           = "hi"
+    override var lang           = "en"
     override val hasMainPage    = true
     override val hasChromecastSupport = true
 
     override val mainPage = mainPageOf(
-        "$mainUrl/page/"                          to "Latest Uploads",
-        "$mainUrl/category/movies/page/"          to "Movies",
-        "$mainUrl/category/tv-series/page/"       to "TV Series",
-        "$mainUrl/category/movies/bollywood/page/" to "Bollywood",
-        "$mainUrl/category/movies/hollywood/page/" to "Hollywood",
+        "$mainUrl/page/"                              to "Latest Uploads",
+        "$mainUrl/category/movies/page/"              to "Movies",
+        "$mainUrl/category/tv-series/page/"           to "TV Series",
+        "$mainUrl/category/movies/bollywood/page/"    to "Bollywood",
+        "$mainUrl/category/movies/hollywood/page/"    to "Hollywood",
         "$mainUrl/category/movies/south-indian/page/" to "South Indian"
     )
 
@@ -81,16 +81,12 @@ class OlaMoviesProvider : MainAPI() {
         return true
     }
 
-    // ── EXACT selectors from real HTML ──────────────────────────────────────
     private fun Document.parsePostList(): List<SearchResponse> {
         return select("article.gridlove-post").mapNotNull { el ->
-            // Title and URL from h2.entry-title > a
             val titleEl = el.selectFirst("h2.entry-title a, h3.entry-title a") ?: return@mapNotNull null
             val href    = titleEl.attr("abs:href").takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val title   = titleEl.text().trim().ifBlank { return@mapNotNull null }
-            // Poster from entry-image img
             val poster  = el.selectFirst("div.entry-image img")?.attr("abs:src")
-            // Detect series from title or categories
             val cats    = el.select("div.entry-category a").map { it.text().lowercase() }
             val isSeries = title.lowercase().contains("season") ||
                            title.contains(Regex("""S\d{2}""")) ||
