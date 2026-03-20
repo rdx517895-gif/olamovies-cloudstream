@@ -15,29 +15,37 @@ class OlaMoviesProvider : MainAPI() {
     override val hasChromecastSupport = true
 
     override val mainPage = mainPageOf(
+        "$mainUrl/page/"                 to "Latest Uploads",
         "$mainUrl/category/2160p/page/"  to "2160p 4K",
         "$mainUrl/category/1080p/page/"  to "1080p Full HD",
         "$mainUrl/category/720p/page/"   to "720p HD",
-        "$mainUrl/category/bluray/page/" to "BluRay",
-        "$mainUrl/page/"                 to "Latest Uploads"
+        "$mainUrl/category/bluray/page/" to "BluRay"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "${request.data}$page"
-        val doc = app.get(url).document
+        val doc = app.get(url, headers = mapOf(
+            "User-Agent" to USER_AGENT,
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        )).document
         val items = doc.parsePostList()
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val doc = app.get("$mainUrl/?s=${query.encodeUri()}").document
+        val doc = app.get(
+            "$mainUrl/?s=${query.encodeUri()}",
+            headers = mapOf("User-Agent" to USER_AGENT)
+        ).document
         return doc.parsePostList()
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val doc    = app.get(url).document
+        val doc    = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
         val title  = doc.selectFirst("h1.entry-title, h1.post-title, h1")?.text()?.trim() ?: return null
-        val poster = doc.selectFirst("div.entry-content img, .post-thumbnail img, img.wp-post-image")?.attr("abs:src")
+        val poster = doc.selectFirst("div.entry-content img, .post-thumbnail img, img.wp-post-image")?.let {
+            it.attr("abs:data-src").ifBlank { it.attr("abs:src") }
+        }
         val plot   = doc.selectFirst("div.entry-content p")?.text()?.trim()
         val tags   = doc.select("a[rel=tag]").map { it.text() }
         val year   = Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)?.toIntOrNull()
@@ -68,18 +76,27 @@ class OlaMoviesProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = app.get(data).document
+        val doc = app.get(data, headers = mapOf("User-Agent" to USER_AGENT)).document
         doc.extractAndCallbackLinks(callback)
         return true
     }
 
     private fun Document.parsePostList(): List<SearchResponse> {
-        return select("article, div.post-item, div.result-item").mapNotNull { el ->
-            val a      = el.selectFirst("h2 a, h3 a, .entry-title a, a.lnk-blk") ?: return@mapNotNull null
-            val href   = a.attr("abs:href").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val title  = a.text().trim().ifBlank { el.selectFirst("h2,h3")?.text()?.trim() } ?: return@mapNotNull null
-            val poster = el.selectFirst("img")?.attr("abs:src")
-            val isSeries = title.lowercase().contains("season") || title.contains(Regex("""S\d{2}"""))
+        return select(
+            "article.post, div.post, div.blog-item, " +
+            "div.item, div.col-xl-2, div.col-lg-3, " +
+            "div.gridlove-post, li.post"
+        ).mapNotNull { el ->
+            val a     = el.selectFirst("a[href]") ?: return@mapNotNull null
+            val href  = fixUrl(a.attr("href")).takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val title = el.selectFirst("h2, h3, h4, .entry-title, img[alt]")
+                          ?.let { if (it.tagName() == "img") it.attr("alt") else it.text() }
+                          ?.trim() ?: a.attr("title").ifBlank { return@mapNotNull null }
+            val poster = el.selectFirst("img")?.let {
+                it.attr("abs:data-src").ifBlank { it.attr("abs:src") }
+            }
+            val isSeries = title.lowercase().contains("season") ||
+                           title.contains(Regex("""S\d{2}E\d{2}"""))
             if (isSeries)
                 newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = poster }
             else
@@ -141,7 +158,8 @@ class OlaMoviesProvider : MainAPI() {
                 }
                 href.contains("ol-am.top") || href.contains("olamovies") -> {
                     try {
-                        val location = app.get(href, allowRedirects = false).headers["location"] ?: continue
+                        val location = app.get(href, allowRedirects = false)
+                            .headers["location"] ?: continue
                         if (location.contains("drive.google.com")) {
                             val fileId    = location.extractGDriveId() ?: continue
                             val directUrl = resolveGDriveLink(fileId) ?: continue
