@@ -34,8 +34,8 @@ jobs:
         run: |
           mkdir -p builds
           find template -name "*.cs3" -exec cp {} builds/ \;
-          cp repo.json builds/
-          printf '[{"url":"https://raw.githubusercontent.com/rdx517895-gif/olamovies-cloudstream/builds/OlaMovies.cs3","name":"OlaMovies","version":1,"authors":["rdx517895-gif"],"tvTypes":["Movie","TvSeries"],"description":"OlaMovies 4K UHD Movies and Series"}]' > builds/plugins.json
+          echo '{"name":"RDX OlaMovies Repo","description":"OlaMovies 4K UHD Google Drive Movies & Series","manifestVersion":1,"pluginLists":["https://raw.githubusercontent.com/rdx517895-gif/olamovies-cloudstream/builds/plugins.json"]}' > builds/repo.json
+          echo '[{"url":"https://raw.githubusercontent.com/rdx517895-gif/olamovies-cloudstream/builds/OlaMovies.cs3","internalName":"OlaMovies","name":"OlaMovies","version":1,"authors":["rdx517895-gif"],"tvTypes":["Movie","TvSeries"],"description":"OlaMovies 4K UHD Movies and Series","language":"hi","iconUrl":"https://n1.olamovies.info/favicon.ico","status":1}]' > builds/plugins.json
 
       - name: Deploy to builds branch
         uses: peaceiris/actions-gh-pages@v3
