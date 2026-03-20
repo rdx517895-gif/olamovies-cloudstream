@@ -25,7 +25,16 @@ class OlaMoviesProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "${request.data}$page"
-        val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
+        val doc = app.get(
+            url,
+            timeout = 120,
+            headers = mapOf(
+                "User-Agent" to USER_AGENT,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "en-US,en;q=0.5",
+                "Connection" to "keep-alive"
+            )
+        ).document
         val items = doc.parsePostList()
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
@@ -33,13 +42,21 @@ class OlaMoviesProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val doc = app.get(
             "$mainUrl/?s=${query.encodeUri()}",
-            headers = mapOf("User-Agent" to USER_AGENT)
+            timeout = 120,
+            headers = mapOf(
+                "User-Agent" to USER_AGENT,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            )
         ).document
         return doc.parsePostList()
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val doc    = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
+        val doc    = app.get(
+            url,
+            timeout = 120,
+            headers = mapOf("User-Agent" to USER_AGENT)
+        ).document
         val title  = doc.selectFirst("h1.entry-title, h1.post-title, h1")?.text()?.trim() ?: return null
         val poster = doc.selectFirst("div.entry-content img, img.wp-post-image")?.let {
             it.attr("abs:src").ifBlank { it.attr("abs:data-src") }
@@ -76,7 +93,11 @@ class OlaMoviesProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = app.get(data, headers = mapOf("User-Agent" to USER_AGENT)).document
+        val doc = app.get(
+            data,
+            timeout = 120,
+            headers = mapOf("User-Agent" to USER_AGENT)
+        ).document
         doc.extractAndCallbackLinks(callback)
         return true
     }
@@ -178,7 +199,12 @@ class OlaMoviesProvider : MainAPI() {
     private suspend fun resolveGDriveLink(fileId: String): String? {
         val baseUrl = "https://drive.google.com/uc?export=download&id=$fileId"
         return try {
-            val resp    = app.get(baseUrl, headers = mapOf("User-Agent" to USER_AGENT), allowRedirects = false)
+            val resp    = app.get(
+                baseUrl,
+                timeout = 120,
+                headers = mapOf("User-Agent" to USER_AGENT),
+                allowRedirects = false
+            )
             val confirm = resp.document
                 .selectFirst("a#uc-download-link, form#downloadForm, a[href*=confirm]")
                 ?.attr("href")
