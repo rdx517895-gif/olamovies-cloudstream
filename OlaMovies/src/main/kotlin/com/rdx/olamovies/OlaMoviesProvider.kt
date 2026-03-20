@@ -15,19 +15,17 @@ class OlaMoviesProvider : MainAPI() {
     override val hasChromecastSupport = true
 
     override val mainPage = mainPageOf(
-        "$mainUrl/page/"                 to "Latest Uploads",
-        "$mainUrl/category/2160p/page/"  to "2160p 4K",
-        "$mainUrl/category/1080p/page/"  to "1080p Full HD",
-        "$mainUrl/category/720p/page/"   to "720p HD",
-        "$mainUrl/category/bluray/page/" to "BluRay"
+        "$mainUrl/page/"                          to "Latest Uploads",
+        "$mainUrl/category/movies/page/"          to "Movies",
+        "$mainUrl/category/tv-series/page/"       to "TV Series",
+        "$mainUrl/category/movies/bollywood/page/" to "Bollywood",
+        "$mainUrl/category/movies/hollywood/page/" to "Hollywood",
+        "$mainUrl/category/movies/south-indian/page/" to "South Indian"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "${request.data}$page"
-        val doc = app.get(url, headers = mapOf(
-            "User-Agent" to USER_AGENT,
-            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-        )).document
+        val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
         val items = doc.parsePostList()
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
@@ -43,8 +41,8 @@ class OlaMoviesProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val doc    = app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).document
         val title  = doc.selectFirst("h1.entry-title, h1.post-title, h1")?.text()?.trim() ?: return null
-        val poster = doc.selectFirst("div.entry-content img, .post-thumbnail img, img.wp-post-image")?.let {
-            it.attr("abs:data-src").ifBlank { it.attr("abs:src") }
+        val poster = doc.selectFirst("div.entry-content img, img.wp-post-image")?.let {
+            it.attr("abs:src").ifBlank { it.attr("abs:data-src") }
         }
         val plot   = doc.selectFirst("div.entry-content p")?.text()?.trim()
         val tags   = doc.select("a[rel=tag]").map { it.text() }
@@ -52,6 +50,8 @@ class OlaMoviesProvider : MainAPI() {
         val isSeries = tags.any { it.lowercase().contains("season") }
                     || title.lowercase().contains("season")
                     || title.contains(Regex("""S\d{2}"""))
+                    || url.contains("tv-series")
+                    || url.contains("tv-shows")
 
         return if (isSeries) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, doc.parseEpisodes(url)) {
@@ -81,22 +81,20 @@ class OlaMoviesProvider : MainAPI() {
         return true
     }
 
+    // ── EXACT selectors from real HTML ──────────────────────────────────────
     private fun Document.parsePostList(): List<SearchResponse> {
-        return select(
-            "article.post, div.post, div.blog-item, " +
-            "div.item, div.col-xl-2, div.col-lg-3, " +
-            "div.gridlove-post, li.post"
-        ).mapNotNull { el ->
-            val a     = el.selectFirst("a[href]") ?: return@mapNotNull null
-            val href  = fixUrl(a.attr("href")).takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val title = el.selectFirst("h2, h3, h4, .entry-title, img[alt]")
-                          ?.let { if (it.tagName() == "img") it.attr("alt") else it.text() }
-                          ?.trim() ?: a.attr("title").ifBlank { return@mapNotNull null }
-            val poster = el.selectFirst("img")?.let {
-                it.attr("abs:data-src").ifBlank { it.attr("abs:src") }
-            }
+        return select("article.gridlove-post").mapNotNull { el ->
+            // Title and URL from h2.entry-title > a
+            val titleEl = el.selectFirst("h2.entry-title a, h3.entry-title a") ?: return@mapNotNull null
+            val href    = titleEl.attr("abs:href").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val title   = titleEl.text().trim().ifBlank { return@mapNotNull null }
+            // Poster from entry-image img
+            val poster  = el.selectFirst("div.entry-image img")?.attr("abs:src")
+            // Detect series from title or categories
+            val cats    = el.select("div.entry-category a").map { it.text().lowercase() }
             val isSeries = title.lowercase().contains("season") ||
-                           title.contains(Regex("""S\d{2}E\d{2}"""))
+                           title.contains(Regex("""S\d{2}""")) ||
+                           cats.any { it.contains("series") || it.contains("shows") }
             if (isSeries)
                 newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = poster }
             else
