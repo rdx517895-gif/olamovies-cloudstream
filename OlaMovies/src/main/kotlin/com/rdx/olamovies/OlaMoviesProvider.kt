@@ -26,8 +26,7 @@ class OlaMoviesProvider : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "${request.data}$page"
         val doc = app.get(
-            url,
-            timeout = 120,
+            url, timeout = 120,
             headers = mapOf(
                 "User-Agent" to USER_AGENT,
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -41,8 +40,7 @@ class OlaMoviesProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val doc = app.get(
-            "$mainUrl/?s=${query.encodeUri()}",
-            timeout = 120,
+            "$mainUrl/?s=${query.encodeUri()}", timeout = 120,
             headers = mapOf(
                 "User-Agent" to USER_AGENT,
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
@@ -52,11 +50,7 @@ class OlaMoviesProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val doc    = app.get(
-            url,
-            timeout = 120,
-            headers = mapOf("User-Agent" to USER_AGENT)
-        ).document
+        val doc = app.get(url, timeout = 120, headers = mapOf("User-Agent" to USER_AGENT)).document
         val title  = doc.selectFirst("h1.entry-title, h1.post-title, h1")?.text()?.trim() ?: return null
         val poster = doc.selectFirst("div.entry-content img, img.wp-post-image")?.let {
             it.attr("abs:src").ifBlank { it.attr("abs:data-src") }
@@ -73,16 +67,16 @@ class OlaMoviesProvider : MainAPI() {
         return if (isSeries) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, doc.parseEpisodes(url)) {
                 this.posterUrl = poster
-                this.plot      = plot
-                this.year      = year
-                this.tags      = tags
+                this.plot = plot
+                this.year = year
+                this.tags = tags
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
-                this.plot      = plot
-                this.year      = year
-                this.tags      = tags
+                this.plot = plot
+                this.year = year
+                this.tags = tags
             }
         }
     }
@@ -93,11 +87,7 @@ class OlaMoviesProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = app.get(
-            data,
-            timeout = 120,
-            headers = mapOf("User-Agent" to USER_AGENT)
-        ).document
+        val doc = app.get(data, timeout = 120, headers = mapOf("User-Agent" to USER_AGENT)).document
         doc.extractAndCallbackLinks(callback)
         return true
     }
@@ -177,7 +167,7 @@ class OlaMoviesProvider : MainAPI() {
                                 this.quality = quality
                                 this.headers = mapOf(
                                     "User-Agent" to USER_AGENT,
-                                    "Referer"    to mainUrl
+                                    "Referer" to mainUrl
                                 )
                             }
                         )
@@ -220,13 +210,9 @@ class OlaMoviesProvider : MainAPI() {
                 }
                 else -> {
                     val resp = app.get(
-                        url,
-                        timeout = 30,
+                        url, timeout = 30,
                         allowRedirects = false,
-                        headers = mapOf(
-                            "User-Agent" to USER_AGENT,
-                            "Referer"    to mainUrl
-                        )
+                        headers = mapOf("User-Agent" to USER_AGENT, "Referer" to mainUrl)
                     )
                     val location = resp.headers["location"]
                     when {
@@ -247,54 +233,71 @@ class OlaMoviesProvider : MainAPI() {
         return try {
             val slug = url.substringAfterLast("/")
 
-            // Step 1 — get token
-            app.get(
-                "https://aryx.xyz/token.php?link=$slug&id=1",
+            // Step 1 — Get reCaptcha anchor token
+            val anchorUrl = "https://www.google.com/recaptcha/api2/anchor?" +
+                "ar=1&k=6Lcr1ncUAAAAAH3cghg6cOTPGARa8adOf-y9zv2x" +
+                "&co=aHR0cHM6Ly9vdW8uaW86NDQz" +
+                "&hl=en&v=1B_yv3CBEV10KtI2HJ6eEXhJ" +
+                "&size=invisible&cb=4xnsug1vufyr"
+
+            val anchorResp = app.get(
+                anchorUrl, timeout = 30,
+                headers = mapOf("User-Agent" to USER_AGENT)
+            )
+
+            val token = Regex("""id="recaptcha-token" value="([^"]+)"""")
+                .find(anchorResp.text)?.groupValues?.get(1) ?: ""
+
+            // Step 2 — Get reCaptcha token
+            val recaptchaResp = app.post(
+                "https://www.google.com/recaptcha/api2/reload?k=6Lcr1ncUAAAAAH3cghg6cOTPGARa8adOf-y9zv2x",
                 timeout = 30,
                 headers = mapOf(
                     "User-Agent" to USER_AGENT,
-                    "Referer"    to url
+                    "Content-Type" to "application/x-www-form-urlencoded"
+                ),
+                data = mapOf(
+                    "v"      to "1B_yv3CBEV10KtI2HJ6eEXhJ",
+                    "reason" to "q",
+                    "c"      to token,
+                    "k"      to "6Lcr1ncUAAAAAH3cghg6cOTPGARa8adOf-y9zv2x",
+                    "co"     to "aHR0cHM6Ly9vdW8uaW86NDQz"
                 )
             )
 
-            // Step 2 — get final link
-            val finalResp = app.get(
-                "https://aryx.xyz/templates/Get.php",
-                timeout = 30,
-                allowRedirects = false,
+            val captchaToken = Regex(""""rresp","([^"]+)"""")
+                .find(recaptchaResp.text)?.groupValues?.get(1) ?: ""
+
+            // Step 3 — Call OlaMovies download API
+            val resp = app.get(
+                "https://olamovies.ink/download/",
+                timeout = 60,
                 headers = mapOf(
-                    "User-Agent" to USER_AGENT,
-                    "Referer"    to url,
-                    "Cookie"     to "anyl=$slug; template=1; page=3"
+                    "User-Agent"       to USER_AGENT,
+                    "Accept"           to "application/json, text/javascript, */*; q=0.01",
+                    "Accept-Language"  to "en-US,en;q=0.5",
+                    "Content-Type"     to "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Referer"          to url
+                ),
+                params = mapOf(
+                    "link"  to slug,
+                    "token" to captchaToken
                 )
             )
 
-            val location = finalResp.headers["location"]
-            if (!location.isNullOrBlank() && location.contains("drive.google.com")) {
-                location
-            } else {
-                // Fallback — allow redirects and find GDrive
-                val resp = app.get(
-                    url,
-                    timeout = 60,
-                    allowRedirects = true,
-                    headers = mapOf("User-Agent" to USER_AGENT)
-                )
-                resp.document.selectFirst("a[href*=drive.google.com]")?.attr("abs:href")
-            }
+            resp.document.selectFirst("a[href*=drive.google.com]")?.attr("href")
+                ?: resp.document.selectFirst("a[href]")?.attr("href")
+
         } catch (_: Exception) { null }
     }
 
     private suspend fun bypassAryx(url: String): String? {
         return try {
             val resp = app.get(
-                url,
-                timeout = 30,
+                url, timeout = 30,
                 allowRedirects = false,
-                headers = mapOf(
-                    "User-Agent" to USER_AGENT,
-                    "Referer"    to mainUrl
-                )
+                headers = mapOf("User-Agent" to USER_AGENT, "Referer" to mainUrl)
             )
             val location = resp.headers["location"]
             when {
@@ -310,9 +313,8 @@ class OlaMoviesProvider : MainAPI() {
     private suspend fun resolveGDriveLink(fileId: String): String? {
         val baseUrl = "https://drive.google.com/uc?export=download&id=$fileId"
         return try {
-            val resp    = app.get(
-                baseUrl,
-                timeout = 120,
+            val resp = app.get(
+                baseUrl, timeout = 120,
                 headers = mapOf("User-Agent" to USER_AGENT),
                 allowRedirects = false
             )
